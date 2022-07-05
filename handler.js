@@ -1,14 +1,16 @@
-export const hello = async (event, context) => {
+export const createInvoice = async (event, context) => {
+  /*
+    1.create invoice from payload
+    2.upload it to s3
+    3.publish s3 file location as response
+  */
   return {
     statusCode: 200,
     body: JSON.stringify({
-      message: `Go Serverless v2.0! ${(await message({ time: 1, copy: 'Your function executed successfully!'}))}`,
+      message: `Your function executed and created invoice!`,
+      location:"https://prod-temp-invoice.s3.me-south-1.amazonaws.com/2022-07-05/temp_invoice_23141.pdf" // dummy file location
     }),
   };
 };
 
-const message = ({ time, ...rest }) => new Promise((resolve, reject) =>
-  setTimeout(() => {
-    resolve(`${rest.copy} (with a delay)`);
-  }, time * 1000)
-);
+

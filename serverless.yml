@@ -25,7 +25,7 @@ provider:
 
 functions:
   hello:
-    handler: handler.hello
+    handler: handler.createInvoice
     events:
       - http:
           path: hello
