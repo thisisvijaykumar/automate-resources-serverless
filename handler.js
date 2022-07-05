@@ -1,4 +1,4 @@
-export const createInvoice = async (event, context) => {
+export const invoiceGeneration = async (event, context) => {
   /*
     1.create invoice from payload
     2.upload it to s3

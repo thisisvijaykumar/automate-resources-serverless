@@ -24,9 +24,8 @@ provider:
   #  SAMPLE_ENV_VAR: ${env:SAMPLE_ENV_VAR}
 
 functions:
-  hello:
-    handler: handler.createInvoice
+  invoice_generation:
+    handler: handler.invoiceGeneration
     events:
-      - http:
-          path: hello
-          method: get
+      - sqs:
+          arn: ${env:INVOICE_UPSTREAM_QUEUE}
