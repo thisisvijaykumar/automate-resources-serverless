@@ -1,6 +1,6 @@
 # NOTE: update this with your service name
-service: automate-resources-serverless
-
+service: sls-with-resources-automation
+useDotenv: true
 # Create an optimized package for our functions 
 package:
   individually: true
@@ -8,24 +8,101 @@ package:
 plugins:
   - serverless-bundle # Package our functions with Webpack
   - serverless-offline
-  - serverless-dotenv-plugin # Load .env as environment variables
+  - serverless-iam-roles-per-function
 
 provider:
   name: aws
-  runtime: nodejs10.x
-  stage: dev
-  region: us-east-1
-  # To load environment variables externally
-  # rename env.example to .env and uncomment
-  # the following line. Also, make sure to not
-  # commit your .env.
-  #
-  #environment:
-  #  SAMPLE_ENV_VAR: ${env:SAMPLE_ENV_VAR}
+  runtime: nodejs12.x
+  stage: ${env:NODE_ENV}
+  region: ap-southeast-1
+  deploymentBucket: ap-india-${env:NODE_ENV}-serverless
 
 functions:
-  invoice_generation:
-    handler: handler.invoiceGeneration
+  order_invoice:
+    handler: handler.execute
+    environment:
+      INVOICE_BUCKET_NAME: "ap-india-${env:NODE_ENV}-invoice-bucket"
+    iamRoleStatementsName: "ap-india-${env:NODE_ENV}-invoice-policies"
+    iamRoleStatements:
+      - Effect: "Allow"
+        Action:
+          - sqs:DeleteMessage
+          - sqs:ReceiveMessage
+          - sqs:GetQueueAttributes
+        Resource:
+          - Fn::GetAtt: [InvoiceUpstreamQueue, Arn]
+      - Effect: "Allow"
+        Action:
+          - sqs:SendMessage
+          - sqs:SendMessageBatch
+        Resource: ${env:INVOICE_DOWNSTREAM_QUEUE_ARN}
+      - Effect: "Allow"
+        Action:
+          - s3:PutObject
+          - s3:GetObject
+        Resource:
+          - Fn::GetAtt: [InvoiceBucket, Arn]
     events:
       - sqs:
-          arn: ${env:INVOICE_UPSTREAM_QUEUE}
+          arn:
+            Fn::GetAtt:
+              - InvoiceUpstreamQueue
+              - Arn
+
+resources:
+  Resources:
+    InvoiceQueueDeadLetterQueue: # Dead Queue for our SQS Queue
+      Type: AWS::SQS::Queue
+      Properties:
+        QueueName: "${env:ENV}-frontend-invoice-upstream-queue-dead"
+    InvoiceUpstreamQueue: #SQS Queue Creation
+      Type: AWS::SQS::Queue
+      Properties:
+        QueueName: "${env:ENV}-frontend-invoice-upstream-queue"
+        VisibilityTimeout: 120
+        RedrivePolicy:
+          deadLetterTargetArn:
+            Fn::GetAtt:
+              - "InvoiceDeadLetterQueue"
+              - "Arn"
+          maxReceiveCount: 5
+    InvoiceUpstreamQueuePolicy: #SQS Queue Policy for Sending and Receiving Message
+      Type: AWS::SQS::QueuePolicy
+      Properties:
+        Queues:
+          - !Ref InvoiceUpstreamQueue
+        PolicyDocument:
+          Version: "2012-10-17"
+          Statement:
+            - Action:
+                - "SQS:SendMessage"
+                - "SQS:ReceiveMessage"
+              Effect: "Allow"
+              Principal: "*"
+              Resource: !Join
+                - ""
+                - - "arn:aws:sqs:::"
+                  - !Ref InvoiceUpstreamQueue
+                  - /*
+    InvoiceBucket: #S3 Bucket Creation
+      Type: AWS::S3::Bucket
+      Properties:
+        AccessControl: PublicRead
+        BucketName: "ap-india-${env:ENV}-invoice-bucket"
+    InvoiceBucketPolicy: #S3 Bucket Policy for reading S3 object publically
+      Type: AWS::S3::BucketPolicy
+      Properties:
+        Bucket: !Ref InvoiceBucket
+        PolicyDocument:
+          Version: "2012-10-17"
+          Statement:
+            - Action:
+                - "s3:GetObject"
+                - "s3:PutObject"
+              Effect: Allow
+              Resource: !Join
+                - ""
+                - - "arn:aws:s3:::"
+                  - !Ref InvoiceBucket
+                  - /*
+              Principal: "*"
